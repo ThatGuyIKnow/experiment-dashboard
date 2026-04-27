@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <main class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Live from n8n</p>
+          <h1>{{ title }}</h1>
+          <p class="subtitle">A lightweight view of active experiment workflows and their current completion status.</p>
+        </div>
+        <a class="health-link" href="/">Refresh dashboard</a>
+      </header>
+
+      {% if error %}
+        <section class="error-banner">
+          <strong>Could not load experiments.</strong>
+          <span>{{ error }}</span>
+        </section>
+      {% endif %}
+
+      {% if experiments %}
+        <section class="grid">
+          {% for experiment in experiments %}
+            <article class="card">
+              <div class="card-header">
+                <div>
+                  <p class="card-label">Experiment</p>
+                  <h2>{{ experiment.name }}</h2>
+                </div>
+                <span class="status status-{{ experiment.status }}">{{ experiment.status_label }}</span>
+              </div>
+
+              <dl class="stats">
+                <div>
+                  <dt>Completed</dt>
+                  <dd>{{ experiment.completed }} / {{ experiment.total }}</dd>
+                </div>
+                <div>
+                  <dt>Started</dt>
+                  <dd>{{ experiment.started_at_label }}</dd>
+                </div>
+              </dl>
+
+              <div class="progress-block">
+                <div class="progress-meta">
+                  <span>Progress</span>
+                  <strong>{{ experiment.progress_text }}</strong>
+                </div>
+                <div class="progress-track" aria-hidden="true">
+                  <div class="progress-bar" style="width: {{ experiment.progress_percent }}%"></div>
+                </div>
+                <p class="progress-percent">{{ experiment.progress_percent }}%</p>
+              </div>
+            </article>
+          {% endfor %}
+        </section>
+      {% elif not error %}
+        <section class="empty-state">
+          <h2>No experiments found</h2>
+          <p>There are currently no n8n workflows named with the <code>Experiment:</code> prefix.</p>
+        </section>
+      {% endif %}
+    </main>
+  </body>
+</html>
