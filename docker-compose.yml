@@ -1,6 +1,6 @@
 services:
   dashboard:
-    build: .
+    image: forgejo.homeboxes.org/oliverhsj/experiment-tracker:latest
     environment:
       N8N_URL: ${N8N_URL}
       N8N_API_KEY: ${N8N_API_KEY}
