@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import os
 from typing import Any
 
@@ -10,6 +10,7 @@ import requests
 
 WORKFLOW_PREFIX = "Experiment: "
 QUERY_NODE_NAME = "Query Webhook"
+EXECUTIONS_PAGE_LIMIT = 250
 
 
 class DashboardError(Exception):
@@ -41,6 +42,82 @@ def list_experiments(timeout_seconds: int = 5) -> list[ExperimentStatus]:
         if str(workflow.get("name", "")).startswith(WORKFLOW_PREFIX)
     ]
     return sorted(experiments, key=_sort_key)
+
+
+def clear_old_runs(timeout_seconds: int = 5, older_than_days: int = 3) -> int:
+    session = _build_session()
+    base_url = _require_env("N8N_URL").rstrip("/")
+    cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+
+    deleted = 0
+    cursor: str | None = None
+    while True:
+        page, cursor = _fetch_executions_page(session, base_url, timeout_seconds, cursor)
+        if not page:
+            break
+        for execution in page:
+            started_at = _parse_datetime(execution.get("startedAt"))
+            if started_at is None or started_at >= cutoff:
+                continue
+            if _delete_execution(session, base_url, execution.get("id"), timeout_seconds):
+                deleted += 1
+        if not cursor:
+            break
+    return deleted
+
+
+def _fetch_executions_page(
+    session: requests.Session,
+    base_url: str,
+    timeout_seconds: int,
+    cursor: str | None,
+) -> tuple[list[dict[str, Any]], str | None]:
+    params: dict[str, Any] = {"limit": EXECUTIONS_PAGE_LIMIT}
+    if cursor:
+        params["cursor"] = cursor
+    try:
+        response = session.get(
+            f"{base_url}/api/v1/executions", params=params, timeout=timeout_seconds
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise DashboardError(f"Could not load executions from n8n: {exc}") from exc
+
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise DashboardError("Unexpected executions response from n8n.")
+    data = payload.get("data")
+    if not isinstance(data, list):
+        raise DashboardError("Unexpected executions response from n8n.")
+    next_cursor = payload.get("nextCursor")
+    return data, next_cursor if isinstance(next_cursor, str) and next_cursor else None
+
+
+def _delete_execution(
+    session: requests.Session,
+    base_url: str,
+    execution_id: Any,
+    timeout_seconds: int,
+) -> bool:
+    if execution_id is None:
+        return False
+    try:
+        response = session.delete(
+            f"{base_url}/api/v1/executions/{execution_id}", timeout=timeout_seconds
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise DashboardError(f"Failed to delete execution {execution_id}: {exc}") from exc
+    return True
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except ValueError:
+        return None
 
 
 def _build_session() -> requests.Session:
@@ -190,16 +267,8 @@ def _require_env(name: str) -> str:
     raise DashboardError(f"Missing required environment variable: {name}")
 
 
-def _sort_key(experiment: ExperimentStatus) -> tuple[int, float, str]:
-    status_rank = {
-        "running": 0,
-        "pending": 1,
-        "completed": 2,
-        "empty": 3,
-        "unavailable": 4,
-    }.get(experiment.status, 5)
-    timestamp = _sort_timestamp(experiment.started_at)
-    return (status_rank, -timestamp, experiment.name.lower())
+def _sort_key(experiment: ExperimentStatus) -> float:
+    return -_sort_timestamp(experiment.started_at)
 
 
 def _sort_timestamp(value: str | None) -> float:

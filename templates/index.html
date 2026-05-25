@@ -17,7 +17,10 @@
           <h1>{{ title }}</h1>
           <p class="subtitle">A lightweight view of active experiment workflows and their current completion status.</p>
         </div>
-        <a class="health-link" href="/">Refresh dashboard</a>
+        <div class="hero-actions">
+          <button type="button" class="health-link" id="clear-old-runs">Clear old runs</button>
+          <a class="health-link" href="/">Refresh dashboard</a>
+        </div>
       </header>
 
       {% if error %}
@@ -70,5 +73,33 @@
         </section>
       {% endif %}
     </main>
+    <script>
+      (function () {
+        const button = document.getElementById("clear-old-runs");
+        if (!button) return;
+        const original = button.textContent;
+        button.addEventListener("click", async () => {
+          button.disabled = true;
+          button.textContent = "Clearing…";
+          try {
+            const response = await fetch("/clear-old-runs", { method: "POST" });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || payload.ok === false) {
+              throw new Error(payload.error || "Request failed");
+            }
+            button.textContent = `Deleted ${payload.deleted ?? 0}`;
+            setTimeout(() => window.location.reload(), 700);
+          } catch (err) {
+            button.textContent = "Failed";
+            button.title = String(err);
+            setTimeout(() => {
+              button.textContent = original;
+              button.disabled = false;
+              button.removeAttribute("title");
+            }, 2500);
+          }
+        });
+      })();
+    </script>
   </body>
 </html>

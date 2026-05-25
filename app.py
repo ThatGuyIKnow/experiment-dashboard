@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import os
-from flask import Flask, render_template
+from flask import Flask, jsonify, render_template
 
-from n8n_client import DashboardError, list_experiments
+from n8n_client import DashboardError, clear_old_runs, list_experiments
 
 
 app = Flask(__name__)
@@ -35,6 +35,16 @@ def index():
         experiments=experiments,
         error=error,
     )
+
+
+@app.post("/clear-old-runs")
+def clear_old_runs_route():
+    config = _config()
+    try:
+        deleted = clear_old_runs(timeout_seconds=config["timeout"], older_than_days=3)
+    except DashboardError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+    return jsonify({"ok": True, "deleted": deleted})
 
 
 @app.get("/healthz")
